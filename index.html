@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>奧特槍神 - 背景圖相容版</title>
+    <title>奧特槍神 - 酷炫戰場背景版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1e272e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -87,7 +87,6 @@ resizeCanvas();
 
 const timeStamp = '?v=' + new Date().getTime();
 
-// 載入所有圖片（包含背景圖 bg）
 const images = {
     hero: { loaded: false, img: new Image() },
     zombie: { loaded: false, img: new Image() },
@@ -284,6 +283,17 @@ const towerArrows = [];
 const particles = [];
 let animFrame = 0;
 
+// 背景繪製用的飄浮粒子
+const bgParticles = [];
+for(let i = 0; i < 30; i++) {
+    bgParticles.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        radius: Math.random() * 2 + 1,
+        speed: Math.random() * 0.5 + 0.2
+    });
+}
+
 const joystick = { active: false, baseX: 0, baseY: 0, currX: 0, currY: 0, radius: 50, dx: 0, dy: 0 };
 
 function handlePointerDown(e) {
@@ -417,24 +427,41 @@ function checkAutoUpgrade() {
     }
 }
 
-// 繪製背景：優先使用 bg.png，否則使用預設風格
+// ✨ 自動繪製酷炫外星戰場背景（若有 bg.png 則優先使用 bg.png）
 function drawRealBackground() {
     if (images.bg.loaded) {
         ctx.drawImage(images.bg.img, 0, 0, canvas.width, canvas.height);
     } else {
+        // 1. 科幻外星地表漸層
         const bgGrad = ctx.createRadialGradient(
-            canvas.width/2, canvas.height/2, 100,
+            canvas.width/2, canvas.height/2, 50,
             canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height)
         );
-        bgGrad.addColorStop(0, '#55efc4');
-        bgGrad.addColorStop(0.6, '#00b894');
-        bgGrad.addColorStop(1, '#006266');
+        bgGrad.addColorStop(0, '#10ac84');
+        bgGrad.addColorStop(0.5, '#222f3e');
+        bgGrad.addColorStop(1, '#0a101d');
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-        for(let i=0; i<canvas.width; i+=60) {
-            ctx.fillRect(i, 0, 30, canvas.height);
+        // 2. 科技戰場格線
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        const gridSize = 50;
+        for (let x = 0; x < canvas.width; x += gridSize) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += gridSize) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+
+        // 3. 飄浮星塵粒子動畫
+        ctx.fillStyle = 'rgba(255, 234, 167, 0.4)';
+        for (let p of bgParticles) {
+            p.y -= p.speed;
+            if (p.y < 0) { p.y = canvas.height; p.x = Math.random() * canvas.width; }
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
         }
     }
 }
