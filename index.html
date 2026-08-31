@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>奧特槍神 - PNG高清修復版</title>
+    <title>奧特槍神 - 基地牆塔照片版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1e272e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -85,31 +85,34 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// ================= 1. 自動偵測絕對路徑與相容載入 =================
 const timeStamp = '?v=' + new Date().getTime();
-const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
 
+// 載入所有角色與基地/城牆/箭塔照片
 const images = {
     hero: { loaded: false, img: new Image() },
     zombie: { loaded: false, img: new Image() },
-    boss: { loaded: false, img: new Image() }
+    boss: { loaded: false, img: new Image() },
+    base: { loaded: false, img: new Image() },
+    wall: { loaded: false, img: new Image() },
+    tower: { loaded: false, img: new Image() }
 };
 
-function loadImage(obj, filename) {
-    // 優先嘗試全相對路徑，若失敗嘗試加上 basePath
-    obj.img.src = filename + timeStamp;
+function loadImageSmart(obj, name) {
+    obj.img.src = name + '.png' + timeStamp;
     obj.img.onload = () => { obj.loaded = true; };
     obj.img.onerror = () => {
-        obj.img.src = basePath + filename + timeStamp;
+        obj.img.src = name + '.png.png' + timeStamp;
         obj.img.onload = () => { obj.loaded = true; };
     };
 }
 
-loadImage(images.hero, 'hero.png');
-loadImage(images.zombie, 'zombie.png');
-loadImage(images.boss, 'boss.png');
+loadImageSmart(images.hero, 'hero');
+loadImageSmart(images.zombie, 'zombie');
+loadImageSmart(images.boss, 'boss');
+loadImageSmart(images.base, 'base');
+loadImageSmart(images.wall, 'wall');
+loadImageSmart(images.tower, 'tower');
 
-// ================= 2. 雙擊解鎖音樂 =================
 let lastTapTime = 0;
 let audioUnlocked = false;
 
@@ -125,7 +128,6 @@ function handleStartTap() {
     }
 }
 
-// ================= 3. Web Audio API 音效與 BGM =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null;
 let bgmTimer = null;
@@ -196,6 +198,13 @@ function playSound(type) {
         gain.gain.setValueAtTime(0.1, now);
         gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
         osc.start(now); osc.stop(now + 0.08);
+    } else if (type === 'arrow') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
     } else if (type === 'coin') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(987.77, now);
@@ -228,13 +237,15 @@ function playSound(type) {
     }
 }
 
-// ================= 4. 遊戲數值 =================
 let goldInHand = 0;
 let goldInBank = 0;
 let killCount = 0;
 let hasPet = false;
+let hasWall = false;
+let hasTower = false;
 let fireRate = 25;
 let fireTimer = 0;
+let towerTimer = 0;
 let baseHitGlow = 0;
 let currentLevel = 1;
 
@@ -263,6 +274,7 @@ const home = {
 const monsters = [];
 const coins = [];
 const bullets = [];
+const towerArrows = [];
 const particles = [];
 let animFrame = 0;
 
@@ -379,9 +391,16 @@ function checkAutoUpgrade() {
         player.speed = 5.0;
         showUpgradeNotice("🚀 超級衝鋒槍！極速飛靴！");
     }
+    if (goldInBank >= 60 && !hasWall) {
+        hasWall = true;
+        showUpgradeNotice("🏰 解鎖城堡城牆！保護秘密基地！");
+    }
+    if (goldInBank >= 100 && !hasTower) {
+        hasTower = true;
+        showUpgradeNotice("🏹 解鎖自動箭塔！幫忙自動打怪！");
+    }
 }
 
-// ================= 5. 繪製組件 =================
 function drawRealBackground() {
     const bgGrad = ctx.createRadialGradient(
         canvas.width/2, canvas.height/2, 100,
@@ -412,9 +431,6 @@ function drawHomeBase() {
     ctx.save();
     ctx.translate(home.x, home.y);
 
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.fillRect(5, home.height - 5, home.width - 10, 15);
-
     if (baseHitGlow > 0) {
         ctx.beginPath();
         ctx.rect(-10, -10, home.width + 20, home.height + 20);
@@ -423,29 +439,54 @@ function drawHomeBase() {
         baseHitGlow--;
     }
 
-    ctx.fillStyle = '#4b6584';
-    ctx.fillRect(100, 5, 14, 25);
+    // 1. 繪製秘密基地照片（如果上傳了 base.png，否則使用內建繪製）
+    if (images.base.loaded) {
+        ctx.drawImage(images.base.img, 0, 0, home.width, home.height);
+    } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(5, home.height - 5, home.width - 10, 15);
+        ctx.fillStyle = '#4b6584';
+        ctx.fillRect(100, 5, 14, 25);
+        ctx.fillStyle = '#f7b731';
+        ctx.fillRect(10, 35, home.width - 20, 55);
+        ctx.strokeStyle = '#fa8231';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(10, 35, home.width - 20, 55);
+        ctx.fillStyle = '#eb3b5a';
+        ctx.beginPath();
+        ctx.moveTo(-5, 38); ctx.lineTo(home.width / 2, 0); ctx.lineTo(home.width + 5, 38); ctx.fill();
+        ctx.fillStyle = '#2d98da';
+        ctx.fillRect(home.width / 2 - 16, 55, 32, 35);
+    }
 
-    ctx.fillStyle = '#f7b731';
-    ctx.fillRect(10, 35, home.width - 20, 55);
-    ctx.strokeStyle = '#fa8231';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(10, 35, home.width - 20, 55);
+    // 2. 解鎖 60 金幣：繪製城牆照片 (wall.png)
+    if (hasWall) {
+        if (images.wall.loaded) {
+            ctx.drawImage(images.wall.img, -25, 10, home.width + 50, home.height + 15);
+        } else {
+            ctx.fillStyle = '#718093';
+            ctx.fillRect(-12, 25, 18, 65);
+            ctx.fillRect(home.width - 6, 25, 18, 65);
+            ctx.fillRect(-12, 80, home.width + 24, 12);
+        }
+    }
 
-    ctx.fillStyle = '#eb3b5a';
-    ctx.beginPath();
-    ctx.moveTo(-5, 38);
-    ctx.lineTo(home.width / 2, 0);
-    ctx.lineTo(home.width + 5, 38);
-    ctx.fill();
-
-    ctx.fillStyle = '#2d98da';
-    ctx.fillRect(home.width / 2 - 16, 55, 32, 35);
+    // 3. 解鎖 100 金幣：繪製箭塔照片 (tower.png)
+    if (hasTower) {
+        if (images.tower.loaded) {
+            ctx.drawImage(images.tower.img, home.width / 2 - 25, -45, 50, 50);
+        } else {
+            ctx.fillStyle = '#dcdde1';
+            ctx.fillRect(home.width / 2 - 12, -22, 24, 22);
+            ctx.fillStyle = '#e1b12c';
+            ctx.beginPath(); ctx.arc(home.width / 2, -22, 8, 0, Math.PI * 2); ctx.fill();
+        }
+    }
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 15px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('🏰 秘密基地', home.width / 2, 28);
+    ctx.fillText(hasTower ? '🏰 奧特防衛堡壘' : '🏰 秘密基地', home.width / 2, 28);
 
     ctx.restore();
 }
@@ -590,6 +631,66 @@ function gameLoop() {
                 c.x += (pet.x - c.x) * 0.15;
                 c.y += (pet.y - c.y) * 0.15;
             }
+        }
+    }
+
+    if (hasTower) {
+        towerTimer++;
+        if (towerTimer >= 35 && monsters.length > 0) {
+            towerTimer = 0;
+            const towerX = home.x + home.width / 2;
+            const towerY = home.y;
+            let targetM = monsters[0];
+            const angle = Math.atan2(targetM.y - towerY, targetM.x - towerX);
+            
+            playSound('arrow');
+            towerArrows.push({
+                x: towerX, y: towerY,
+                vx: Math.cos(angle) * 11,
+                vy: Math.sin(angle) * 11
+            });
+        }
+    }
+
+    for (let i = towerArrows.length - 1; i >= 0; i--) {
+        const a = towerArrows[i];
+        a.x += a.vx; a.y += a.vy;
+
+        ctx.strokeStyle = '#e1b12c';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(a.x - a.vx * 1.5, a.y - a.vy * 1.5);
+        ctx.stroke();
+
+        for (let j = monsters.length - 1; j >= 0; j--) {
+            const m = monsters[j];
+            if (Math.hypot(a.x - m.x, a.y - m.y) < m.radius) {
+                m.hp--;
+                addParticles(m.x, m.y, '#e1b12c', 5);
+                towerArrows.splice(i, 1);
+
+                if (m.hp <= 0) {
+                    if (m.isBoss) {
+                        for (let k = 0; k < 8; k++) {
+                            coins.push({
+                                x: m.x + (Math.random() - 0.5) * 60,
+                                y: m.y + (Math.random() - 0.5) * 60
+                            });
+                        }
+                    } else {
+                        coins.push({ x: m.x, y: m.y });
+                        killCount++;
+                        if (killCount % 7 === 0) spawnBoss();
+                    }
+                    monsters.splice(j, 1);
+                }
+                break;
+            }
+        }
+
+        if (a.x < 0 || a.x > canvas.width || a.y < 0 || a.y > canvas.height) {
+            towerArrows.splice(i, 1);
         }
     }
 
