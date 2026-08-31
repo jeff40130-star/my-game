@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>奧特槍神 - 雙擊開啟音樂版</title>
+    <title>奧特槍神 - PNG高清修復版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
         body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1e272e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -31,17 +31,8 @@
             animation: pulse 1.2s infinite alternate;
         }
 
-        .start-card h1 {
-            font-size: 26px;
-            color: #2d3436;
-            margin-bottom: 8px;
-        }
-
-        .start-card p {
-            font-size: 18px;
-            color: #e67e22;
-            font-weight: bold;
-        }
+        .start-card h1 { font-size: 26px; color: #2d3436; margin-bottom: 8px; }
+        .start-card p { font-size: 18px; color: #e67e22; font-weight: bold; }
 
         @keyframes pulse {
             0% { transform: scale(0.95); }
@@ -50,8 +41,7 @@
 
         #upgradeNotice {
             position: absolute;
-            top: 20%;
-            left: 50%;
+            top: 20%; left: 50%;
             transform: translate(-50%, -50%);
             background: rgba(255, 234, 167, 0.98);
             color: #d63031;
@@ -95,23 +85,31 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// 防快取圖檔載入
-const cacheBuster = '?v=' + new Date().getTime();
+// ================= 1. 自動偵測絕對路徑與相容載入 =================
+const timeStamp = '?v=' + new Date().getTime();
+const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+
 const images = {
     hero: { loaded: false, img: new Image() },
     zombie: { loaded: false, img: new Image() },
     boss: { loaded: false, img: new Image() }
 };
 
-images.hero.img.src = 'hero.png' + cacheBuster;
-images.hero.img.onload = () => { images.hero.loaded = true; };
+function loadImage(obj, filename) {
+    // 優先嘗試全相對路徑，若失敗嘗試加上 basePath
+    obj.img.src = filename + timeStamp;
+    obj.img.onload = () => { obj.loaded = true; };
+    obj.img.onerror = () => {
+        obj.img.src = basePath + filename + timeStamp;
+        obj.img.onload = () => { obj.loaded = true; };
+    };
+}
 
-images.zombie.img.src = 'zombie.png' + cacheBuster;
-images.zombie.img.onload = () => { images.zombie.loaded = true; };
+loadImage(images.hero, 'hero.png');
+loadImage(images.zombie, 'zombie.png');
+loadImage(images.boss, 'boss.png');
 
-images.boss.img.src = 'boss.png' + cacheBuster;
-images.boss.img.onload = () => { images.boss.loaded = true; };
-
+// ================= 2. 雙擊解鎖音樂 =================
 let lastTapTime = 0;
 let audioUnlocked = false;
 
@@ -127,6 +125,7 @@ function handleStartTap() {
     }
 }
 
+// ================= 3. Web Audio API 音效與 BGM =================
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null;
 let bgmTimer = null;
@@ -229,6 +228,7 @@ function playSound(type) {
     }
 }
 
+// ================= 4. 遊戲數值 =================
 let goldInHand = 0;
 let goldInBank = 0;
 let killCount = 0;
@@ -381,6 +381,7 @@ function checkAutoUpgrade() {
     }
 }
 
+// ================= 5. 繪製組件 =================
 function drawRealBackground() {
     const bgGrad = ctx.createRadialGradient(
         canvas.width/2, canvas.height/2, 100,
