@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>寶貝大冒險</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #7cfc00; font-family: sans-serif; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// 調整 Canvas 尺寸至全螢幕
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// 遊戲狀態
+let goldInHand = 0;
+let goldInBank = 0;
+
+// 玩家角色 (藍色圓圈)
+const player = {
+    x: canvas.width / 2,
+    y: canvas.height / 2 + 50,
+    radius: 20,
+    speed: 3.5,
+    attackRange: 80
+};
+
+// 家/城堡 (頂部中央綠色區域)
+const home = {
+    x: canvas.width / 2 - 60,
+    y: 10,
+    width: 120,
+    height: 70
+};
+
+// 陣列管理
+const monsters = [];
+const coins = [];
+
+// 虛擬搖桿設定
+const joystick = {
+    active: false,
+    baseX: 0,
+    baseY: 0,
+    currX: 0,
+    currY: 0,
+    radius: 50,
+    dx: 0,
+    dy: 0
+};
+
+// 監聽觸控事件 (支援手機與電腦滑鼠)
+function handlePointerDown(e) {
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    // 在點擊位置產生搖桿
+    joystick.active = true;
+    joystick.baseX = x;
+    joystick.baseY = y;
+    joystick.currX = x;
+    joystick.currY = y;
+}
+
+function handlePointerMove(e) {
+    if (!joystick.active) return;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    joystick.currX = x;
+    joystick.currY = y;
+    
+    const angle = Math.atan2(y - joystick.baseY, x - joystick.baseX);
+    const dist = Math.min(Math.hypot(x - joystick.baseX, y - joystick.baseY), joystick.radius);
+    
+    joystick.dx = Math.cos(angle) * (dist / joystick.radius);
+    joystick.dy = Math.sin(angle) * (dist / joystick.radius);
+}
+
+function handlePointerUp() {
+    joystick.active = false;
+    joystick.dx = 0;
+    joystick.dy = 0;
+}
+
+window.addEventListener('touchstart', handlePointerDown);
+window.addEventListener('touchmove', handlePointerMove);
+window.addEventListener('touchend', handlePointerUp);
+window.addEventListener('mousedown', handlePointerDown);
+window.addEventListener('mousemove', handlePointerMove);
+window.addEventListener('mouseup', handlePointerUp);
+
+// 定時生成怪物 (每 2 秒出現一隻)
+setInterval(() => {
+    if (monsters.length < 8) {
+        monsters.push({
+            x: Math.random() * (canvas.width - 40) + 20,
+            y: Math.random() * (canvas.height - 200) + 120,
+            radius: 15,
+            hp: 1,
+            color: '#ff4757'
+        });
+    }
+}, 2000);
+
+// 主遊戲迴圈
+function gameLoop() {
+    // 1. 清空畫布 (草地背景)
+    ctx.fillStyle = '#7bed9f';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. 繪製「家」
+    ctx.fillStyle = '#ffa502';
+    ctx.fillRect(home.x, home.y, home.width, home.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏡 家', home.x + home.width / 2, home.y + 40);
+
+    // 3. 更新與繪製玩家
+    player.x += joystick.dx * player.speed;
+    player.y += joystick.dy * player.speed;
+    
+    // 邊界限制
+    player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+    player.y = Math.max(player.radius + 80, Math.min(canvas.height - player.radius, player.y));
+
+    // 畫攻擊範圍波紋
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.attackRange, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fill();
+
+    // 畫玩家主體
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#1e90ff';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+
+    // 檢查回家存錢
+    if (player.x > home.x && player.x < home.x + home.width &&
+        player.y - player.radius < home.y + home.height) {
+        if (goldInHand > 0) {
+            goldInBank += goldInHand;
+            goldInHand = 0;
+        }
+    }
+
+    // 4. 怪物邏輯與自動攻擊
+    for (let i = monsters.length - 1; i >= 0; i--) {
+        const m = monsters[i];
+        
+        // 畫怪物
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+        ctx.fillStyle = m.color;
+        ctx.fill();
+
+        // 自動攻擊範圍判定
+        const distToPlayer = Math.hypot(player.x - m.x, player.y - m.y);
+        if (distToPlayer < player.attackRange) {
+            // 發射攻擊光線
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y);
+            ctx.lineTo(m.x, m.y);
+            ctx.strokeStyle = '#fffa65';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // 怪物死亡，掉落金幣
+            coins.push({ x: m.x, y: m.y, radius: 8 });
+            monsters.splice(i, 1);
+        }
+    }
+
+    // 5. 金幣邏輯 (自動吸附)
+    for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        const dist = Math.hypot(player.x - c.x, player.y - c.y);
+
+        // 磁鐵吸附效果 (距離小於 120 時加速飛向玩家)
+        if (dist < 120) {
+            c.x += (player.x - c.x) * 0.15;
+            c.y += (player.y - c.y) * 0.15;
+        }
+
+        // 撿到金幣
+        if (dist < player.radius + c.radius) {
+            goldInHand++;
+            coins.splice(i, 1);
+            continue;
+        }
+
+        // 畫金幣
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd700';
+        ctx.fill();
+        ctx.strokeStyle = '#ffa502';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    // 6. 畫虛擬搖桿 (觸控時顯示)
+    if (joystick.active) {
+        // 底座
+        ctx.beginPath();
+        ctx.arc(joystick.baseX, joystick.baseY, joystick.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fill();
+        // 搖桿頭
+        ctx.beginPath();
+        ctx.arc(joystick.currX, joystick.currY, 25, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fill();
+    }
+
+    // 7. UI 計分板
+    ctx.fillStyle = '#2f3542';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`🎒 身上的金幣: ${goldInHand}`, 20, 40);
+    ctx.fillText(`🏦 家裡的金幣: ${goldInBank}`, 20, 70);
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
