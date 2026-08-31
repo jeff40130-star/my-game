@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>奧特槍神 - 雙擊開啟音樂版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1e272e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; }
+
+        #startOverlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.65);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            cursor: pointer;
+        }
+
+        .start-card {
+            background: #ffffff;
+            padding: 25px 35px;
+            border-radius: 25px;
+            text-align: center;
+            border: 5px solid #ff9f43;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: pulse 1.2s infinite alternate;
+        }
+
+        .start-card h1 {
+            font-size: 26px;
+            color: #2d3436;
+            margin-bottom: 8px;
+        }
+
+        .start-card p {
+            font-size: 18px;
+            color: #e67e22;
+            font-weight: bold;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); }
+            100% { transform: scale(1.05); }
+        }
+
+        #upgradeNotice {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 234, 167, 0.98);
+            color: #d63031;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: bold;
+            border: 4px solid #ff7675;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+            display: none;
+            z-index: 10;
+            animation: popIn 0.5s ease-out;
+        }
+
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="startOverlay" onclick="handleStartTap()">
+    <div class="start-card">
+        <h1>🎵 歡迎來到奧特槍神</h1>
+        <p>👇 請點兩下 開啟音樂 👇</p>
+    </div>
+</div>
+
+<div id="upgradeNotice">🎉 武器與速度升級了！</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// 防快取圖檔載入
+const cacheBuster = '?v=' + new Date().getTime();
+const images = {
+    hero: { loaded: false, img: new Image() },
+    zombie: { loaded: false, img: new Image() },
+    boss: { loaded: false, img: new Image() }
+};
+
+images.hero.img.src = 'hero.png' + cacheBuster;
+images.hero.img.onload = () => { images.hero.loaded = true; };
+
+images.zombie.img.src = 'zombie.png' + cacheBuster;
+images.zombie.img.onload = () => { images.zombie.loaded = true; };
+
+images.boss.img.src = 'boss.png' + cacheBuster;
+images.boss.img.onload = () => { images.boss.loaded = true; };
+
+let lastTapTime = 0;
+let audioUnlocked = false;
+
+function handleStartTap() {
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTapTime;
+
+    if (tapLength < 400 && tapLength > 0) {
+        unlockAudio();
+        document.getElementById('startOverlay').style.display = 'none';
+    } else {
+        lastTapTime = currentTime;
+    }
+}
+
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+let bgmTimer = null;
+let bgmStep = 0;
+
+const melodyNotes = [
+    261.63, 329.63, 392.00, 523.25,
+    392.00, 329.63, 293.66, 349.23,
+    392.00, 440.00, 392.00, 329.63,
+    261.63, 293.66, 329.63, 261.63
+];
+
+function unlockAudio() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    if (!audioCtx) audioCtx = new AudioCtx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    startBGM();
+}
+
+function startBGM() {
+    if (bgmTimer) return;
+    bgmTimer = setInterval(() => {
+        if (!audioCtx || audioCtx.state !== 'running') return;
+        const now = audioCtx.currentTime;
+        
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(melodyNotes[bgmStep % melodyNotes.length], now);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.22);
+
+        if (bgmStep % 2 === 0) {
+            const bassOsc = audioCtx.createOscillator();
+            const bassGain = audioCtx.createGain();
+            bassOsc.type = 'triangle';
+            bassOsc.frequency.setValueAtTime(130.81, now);
+            bassGain.gain.setValueAtTime(0.04, now);
+            bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            bassOsc.connect(bassGain);
+            bassGain.connect(audioCtx.destination);
+            bassOsc.start(now);
+            bassOsc.stop(now + 0.3);
+        }
+
+        bgmStep++;
+    }, 250);
+}
+
+function playSound(type) {
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+
+    if (type === 'shoot') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(500, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+        osc.start(now); osc.stop(now + 0.08);
+    } else if (type === 'coin') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(987.77, now);
+        osc.frequency.setValueAtTime(1318.51, now + 0.08);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+    } else if (type === 'bank') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.1);
+        osc.frequency.setValueAtTime(783.99, now + 0.2);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+        osc.start(now); osc.stop(now + 0.35);
+    } else if (type === 'boss') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.linearRampToValueAtTime(300, now + 0.2);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now); osc.stop(now + 0.3);
+    } else if (type === 'hitBase') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.setValueAtTime(50, now + 0.12);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.12);
+        osc.start(now); osc.stop(now + 0.12);
+    }
+}
+
+let goldInHand = 0;
+let goldInBank = 0;
+let killCount = 0;
+let hasPet = false;
+let fireRate = 25;
+let fireTimer = 0;
+let baseHitGlow = 0;
+let currentLevel = 1;
+
+const player = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    radius: 30,
+    speed: 3.8,
+    attackRange: 180,
+    angle: 0
+};
+
+const pet = {
+    x: canvas.width / 2 - 40,
+    y: canvas.height / 2,
+    radius: 12
+};
+
+const home = {
+    x: canvas.width / 2 - 70,
+    y: 20,
+    width: 140,
+    height: 90
+};
+
+const monsters = [];
+const coins = [];
+const bullets = [];
+const particles = [];
+let animFrame = 0;
+
+const joystick = { active: false, baseX: 0, baseY: 0, currX: 0, currY: 0, radius: 50, dx: 0, dy: 0 };
+
+function handlePointerDown(e) {
+    if (!audioUnlocked) return;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    joystick.active = true;
+    joystick.baseX = x; joystick.baseY = y;
+    joystick.currX = x; joystick.currY = y;
+}
+
+function handlePointerMove(e) {
+    if (!joystick.active) return;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    joystick.currX = x; joystick.currY = y;
+    const angle = Math.atan2(y - joystick.baseY, x - joystick.baseX);
+    const dist = Math.min(Math.hypot(x - joystick.baseX, y - joystick.baseY), joystick.radius);
+    joystick.dx = Math.cos(angle) * (dist / joystick.radius);
+    joystick.dy = Math.sin(angle) * (dist / joystick.radius);
+    if (joystick.dx !== 0 || joystick.dy !== 0) player.angle = angle;
+}
+
+function handlePointerUp() {
+    joystick.active = false;
+    joystick.dx = 0; joystick.dy = 0;
+}
+
+window.addEventListener('touchstart', handlePointerDown);
+window.addEventListener('touchmove', handlePointerMove);
+window.addEventListener('touchend', handlePointerUp);
+window.addEventListener('mousedown', handlePointerDown);
+window.addEventListener('mousemove', handlePointerMove);
+window.addEventListener('mouseup', handlePointerUp);
+
+setInterval(() => {
+    if (monsters.length < 12) {
+        let spawnX, spawnY;
+        const side = Math.floor(Math.random() * 3);
+
+        if (side === 0) {
+            spawnX = -30;
+            spawnY = Math.random() * (canvas.height - 120) + 120;
+        } else if (side === 1) {
+            spawnX = canvas.width + 30;
+            spawnY = Math.random() * (canvas.height - 120) + 120;
+        } else {
+            spawnX = Math.random() * canvas.width;
+            spawnY = canvas.height + 30;
+        }
+
+        monsters.push({
+            x: spawnX,
+            y: spawnY,
+            radius: 28,
+            hp: 1,
+            speed: 1.2,
+            isBoss: false,
+            attackTimer: 0
+        });
+    }
+}, 1000);
+
+function spawnBoss() {
+    playSound('boss');
+    monsters.push({
+        x: canvas.width / 2,
+        y: canvas.height + 50,
+        radius: 48,
+        hp: 6,
+        maxHp: 6,
+        speed: 0.8,
+        isBoss: true,
+        attackTimer: 0
+    });
+}
+
+function addParticles(x, y, color, count = 6) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 6,
+            life: 20,
+            color: color
+        });
+    }
+}
+
+function showUpgradeNotice(text) {
+    const el = document.getElementById('upgradeNotice');
+    el.innerText = text;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2200);
+}
+
+function checkAutoUpgrade() {
+    if (goldInBank >= 10 && currentLevel < 2) {
+        currentLevel = 2;
+        fireRate = 18;
+        player.speed = 4.3;
+        showUpgradeNotice("⚡ 槍聲加速！跑速提升！");
+    }
+    if (goldInBank >= 25 && !hasPet) {
+        hasPet = true;
+        showUpgradeNotice("🐉 解鎖小飛龍！幫忙撿金幣！");
+    }
+    if (goldInBank >= 45 && currentLevel < 3) {
+        currentLevel = 3;
+        fireRate = 10;
+        player.speed = 5.0;
+        showUpgradeNotice("🚀 超級衝鋒槍！極速飛靴！");
+    }
+}
+
+function drawRealBackground() {
+    const bgGrad = ctx.createRadialGradient(
+        canvas.width/2, canvas.height/2, 100,
+        canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height)
+    );
+    bgGrad.addColorStop(0, '#55efc4');
+    bgGrad.addColorStop(0.6, '#00b894');
+    bgGrad.addColorStop(1, '#006266');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    for(let i=0; i<canvas.width; i+=60) {
+        ctx.fillRect(i, 0, 30, canvas.height);
+    }
+}
+
+function drawShadow(x, y, radius) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(x, y + radius * 0.8, radius * 0.9, radius * 0.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawHomeBase() {
+    ctx.save();
+    ctx.translate(home.x, home.y);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(5, home.height - 5, home.width - 10, 15);
+
+    if (baseHitGlow > 0) {
+        ctx.beginPath();
+        ctx.rect(-10, -10, home.width + 20, home.height + 20);
+        ctx.fillStyle = `rgba(255, 71, 87, ${baseHitGlow * 0.15})`;
+        ctx.fill();
+        baseHitGlow--;
+    }
+
+    ctx.fillStyle = '#4b6584';
+    ctx.fillRect(100, 5, 14, 25);
+
+    ctx.fillStyle = '#f7b731';
+    ctx.fillRect(10, 35, home.width - 20, 55);
+    ctx.strokeStyle = '#fa8231';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 35, home.width - 20, 55);
+
+    ctx.fillStyle = '#eb3b5a';
+    ctx.beginPath();
+    ctx.moveTo(-5, 38);
+    ctx.lineTo(home.width / 2, 0);
+    ctx.lineTo(home.width + 5, 38);
+    ctx.fill();
+
+    ctx.fillStyle = '#2d98da';
+    ctx.fillRect(home.width / 2 - 16, 55, 32, 35);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏰 秘密基地', home.width / 2, 28);
+
+    ctx.restore();
+}
+
+function drawHero(x, y) {
+    drawShadow(x, y, player.radius);
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    const width = player.radius * 2.4;
+    const height = player.radius * 2.8;
+
+    if (images.hero.loaded) {
+        ctx.drawImage(images.hero.img, -width/2, -height/2, width, height);
+    } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#3742fa';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+
+    ctx.rotate(player.angle);
+    ctx.fillStyle = '#ff4757';
+    ctx.fillRect(width/2 - 2, -2, 8, 4);
+
+    ctx.restore();
+}
+
+function drawMonster(m) {
+    drawShadow(m.x, m.y, m.radius);
+
+    ctx.save();
+    ctx.translate(m.x, m.y);
+
+    const imgObj = m.isBoss ? images.boss : images.zombie;
+    const width = m.radius * (m.isBoss ? 2.6 : 2.4);
+    const height = m.radius * (m.isBoss ? 2.6 : 2.8);
+
+    if (imgObj.loaded) {
+        ctx.drawImage(imgObj.img, -width/2, -height/2, width, height);
+    } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, m.radius, 0, Math.PI * 2);
+        ctx.fillStyle = m.isBoss ? '#d35400' : '#2ecc71';
+        ctx.fill();
+    }
+
+    if (m.isBoss) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(-20, -height/2 - 12, 40, 5);
+        ctx.fillStyle = '#ff4757';
+        ctx.fillRect(-20, -height/2 - 12, 40 * (m.hp / m.maxHp), 5);
+    }
+
+    ctx.restore();
+}
+
+function drawPet(x, y) {
+    drawShadow(x, y, pet.radius);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.beginPath();
+    ctx.arc(0, 0, pet.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff6b81';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const wingOffset = Math.sin(animFrame * 0.2) * 5;
+    ctx.fillStyle = '#ff4757';
+    ctx.fillRect(-15, -4 + wingOffset, 6, 8);
+    ctx.fillRect(9, -4 + wingOffset, 6, 8);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(-4, -3, 3, 0, Math.PI * 2); ctx.arc(4, -3, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.beginPath(); ctx.arc(-4, -3, 1.5, 0, Math.PI * 2); ctx.arc(4, -3, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
+function drawCoin(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    const glowSize = 12 + Math.sin(animFrame * 0.1) * 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, glowSize, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffd700';
+    ctx.fill();
+    ctx.strokeStyle = '#ffa502';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffa502';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', 0, 1);
+    ctx.restore();
+}
+
+function gameLoop() {
+    animFrame++;
+    drawRealBackground();
+    drawHomeBase();
+
+    player.x += joystick.dx * player.speed;
+    player.y += joystick.dy * player.speed;
+    player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+    player.y = Math.max(player.radius + 80, Math.min(canvas.height - player.radius, player.y));
+
+    if (player.x > home.x - 10 && player.x < home.x + home.width + 10 &&
+        player.y > home.y - 10 && player.y < home.y + home.height + 10) {
+        if (goldInHand > 0) {
+            goldInBank += goldInHand;
+            addParticles(player.x, player.y, '#ffd700', 12);
+            goldInHand = 0;
+            playSound('bank');
+            checkAutoUpgrade();
+        }
+    }
+
+    if (hasPet) {
+        const targetX = player.x - 30;
+        const targetY = player.y + 20;
+        pet.x += (targetX - pet.x) * 0.1;
+        pet.y += (targetY - pet.y) * 0.1;
+        drawPet(pet.x, pet.y);
+
+        for (let c of coins) {
+            if (Math.hypot(pet.x - c.x, pet.y - c.y) < 130) {
+                c.x += (pet.x - c.x) * 0.15;
+                c.y += (pet.y - c.y) * 0.15;
+            }
+        }
+    }
+
+    const baseCenterX = home.x + home.width / 2;
+    const baseCenterY = home.y + home.height / 2;
+
+    for (let i = monsters.length - 1; i >= 0; i--) {
+        const m = monsters[i];
+        const distToBase = Math.hypot(m.x - baseCenterX, m.y - baseCenterY);
+
+        if (distToBase > 60) {
+            const angleToBase = Math.atan2(baseCenterY - m.y, baseCenterX - m.x);
+            m.x += Math.cos(angleToBase) * m.speed;
+            m.y += Math.sin(angleToBase) * m.speed;
+            m.isAttacking = false;
+        } else {
+            m.isAttacking = true;
+            m.attackTimer = (m.attackTimer || 0) + 1;
+            if (m.attackTimer % 45 === 0) {
+                baseHitGlow = 12;
+                playSound('hitBase');
+                addParticles(m.x, m.y, '#ff4757', 6);
+            }
+        }
+
+        drawMonster(m);
+    }
+
+    fireTimer++;
+    let closestMonster = null;
+    let minDist = player.attackRange;
+
+    for (let m of monsters) {
+        const dist = Math.hypot(player.x - m.x, player.y - m.y);
+        if (dist < minDist) {
+            minDist = dist;
+            closestMonster = m;
+        }
+    }
+
+    if (closestMonster) {
+        player.angle = Math.atan2(closestMonster.y - player.y, closestMonster.x - player.x);
+        if (fireTimer >= fireRate) {
+            fireTimer = 0;
+            playSound('shoot');
+            bullets.push({
+                x: player.x, y: player.y - 10,
+                vx: Math.cos(player.angle) * 9,
+                vy: Math.sin(player.angle) * 9
+            });
+        }
+    }
+
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx; b.y += b.vy;
+
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#fffa65';
+        ctx.fill();
+
+        for (let j = monsters.length - 1; j >= 0; j--) {
+            const m = monsters[j];
+            if (Math.hypot(b.x - m.x, b.y - m.y) < (m.isBoss ? 35 : 20)) {
+                m.hp--;
+                addParticles(m.x, m.y, '#2ed573', 4);
+                bullets.splice(i, 1);
+
+                if (m.hp <= 0) {
+                    if (m.isBoss) {
+                        for (let k = 0; k < 8; k++) {
+                            coins.push({
+                                x: m.x + (Math.random() - 0.5) * 60,
+                                y: m.y + (Math.random() - 0.5) * 60
+                            });
+                        }
+                    } else {
+                        coins.push({ x: m.x, y: m.y });
+                        killCount++;
+                        if (killCount % 7 === 0) spawnBoss();
+                    }
+                    monsters.splice(j, 1);
+                }
+                break;
+            }
+        }
+
+        if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+            bullets.splice(i, 1);
+        }
+    }
+
+    drawHero(player.x, player.y);
+
+    for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        drawCoin(c);
+
+        const distP = Math.hypot(player.x - c.x, player.y - c.y);
+        const distPet = hasPet ? Math.hypot(pet.x - c.x, pet.y - c.y) : 999;
+
+        if (distP < player.radius + 15 || distPet < pet.radius + 15) {
+            goldInHand++;
+            playSound('coin');
+            addParticles(c.x, c.y, '#ffd700', 6);
+            coins.splice(i, 1);
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.life--;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 3, 3);
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    if (joystick.active) {
+        ctx.beginPath();
+        ctx.arc(joystick.baseX, joystick.baseY, joystick.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(joystick.currX, joystick.currY, 22, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fill();
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`🎒 身上的金幣: ${goldInHand}`, 15, 35);
+    ctx.fillText(`🏦 銀行存款: ${goldInBank}`, 15, 65);
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
